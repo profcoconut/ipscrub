@@ -11,6 +11,7 @@ from dataclasses import replace
 from .addresses import AddressError, Matcher, decode_address
 from .plan import Plan
 from .runner import run
+from . import __version__
 
 PROG = "ipscrub"
 
@@ -210,6 +211,10 @@ def build_parser() -> argparse.ArgumentParser:
     remote.add_argument("--apply", action="store_true", help="clean instead of only scanning")
     remote.add_argument("--profile", default=None, metavar="NAME")
     remote.add_argument("--timeout", type=int, default=600, metavar="SECONDS")
+
+    parser.add_argument(
+        "--version", action="version", version=f"{PROG} {__version__}"
+    )
 
     return parser
 

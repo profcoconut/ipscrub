@@ -20,6 +20,12 @@ def write(path, text):
 
 
 class TestExitCodes:
+    def test_version_flag(self, capsys):
+        with pytest.raises(SystemExit) as excinfo:
+            main(["--version"])
+        assert excinfo.value.code == 0
+        assert "ipscrub" in capsys.readouterr().out
+
     def test_scan_clean_is_zero(self, tmp_path, capsys):
         write(tmp_path / "a.log", "nothing\n")
         code = main(["scan", "--address", ADDRESS, "--root", str(tmp_path)])
