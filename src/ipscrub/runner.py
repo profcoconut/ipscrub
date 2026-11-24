@@ -28,6 +28,9 @@ class Outcome:
             f"files with matches : {rep.dirty_files}",
             f"occurrences        : {rep.occurrences}",
         ]
+        if rep.applied:
+            lines.append(f"removed files      : {rep.removed_files}")
+            lines.append(f"removed occurrences: {rep.removed_occurrences}")
         unmeasured = rep.unmeasured
         if unmeasured:
             lines.append(

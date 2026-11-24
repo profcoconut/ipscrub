@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from dataclasses import replace
+from pathlib import Path
 
 from .addresses import AddressError, Matcher, decode_address
 from .plan import Plan
@@ -130,6 +131,8 @@ def _print_json(outcome, matcher: Matcher) -> None:
         "scanned": report.scanned,
         "dirty_files": report.dirty_files,
         "occurrences": report.occurrences,
+        "removed_files": report.removed_files,
+        "removed_occurrences": report.removed_occurrences,
         "skipped_large": report.skipped_large,
         "findings": [
             {
@@ -210,13 +213,103 @@ def build_parser() -> argparse.ArgumentParser:
     remote.add_argument("--region", required=True)
     remote.add_argument("--apply", action="store_true", help="clean instead of only scanning")
     remote.add_argument("--profile", default=None, metavar="NAME")
-    remote.add_argument("--timeout", type=int, default=600, metavar="SECONDS")
+    remote.add_argument("--timeout", type=int, default=2700, metavar="SECONDS")
+
+    nightly = subparsers.add_parser(
+        "nightly",
+        help="discover this machine's address, clean it on the given hosts, report counts",
+        description=(
+            "One unattended pass, meant for a scheduled job: learn the public address, "
+            "remember it, then clean every address in the rolling window on each named "
+            "instance. Prints how many matches were found and how many were removed."
+        ),
+    )
+    nightly.add_argument(
+        "--instance", action="append", default=[], metavar="ID",
+        help="EC2 instance to clean; repeatable",
+    )
+    nightly.add_argument("--region", required=True)
+    nightly.add_argument("--profile", default=None, metavar="NAME")
+    nightly.add_argument("--timeout", type=int, default=2700, metavar="SECONDS")
+    nightly.add_argument(
+        "--keep", type=int, default=None, metavar="N",
+        help="how many past addresses to keep in scope (default 5)",
+    )
+    nightly.add_argument(
+        "--address", default=None, metavar="IP",
+        help="skip discovery and use this address (testing, or a known-egress box)",
+    )
+    nightly.add_argument(
+        "--prefix-len", type=int, default=None, metavar="N",
+        help="also match the enclosing network (default: /24, 0 disables)",
+    )
+    nightly.add_argument(
+        "--delete-journals", action="store_true",
+        help="delete journal files on the pattern rather than only on a real match",
+    )
+    nightly.add_argument(
+        "--state-dir", default=None, metavar="DIR",
+        help="where the address history and the latest report live",
+    )
+    nightly.add_argument("--json", action="store_true", help="machine readable output")
 
     parser.add_argument(
         "--version", action="version", version=f"{PROG} {__version__}"
     )
 
     return parser
+
+
+def _run_nightly(args: argparse.Namespace) -> int:
+    from .history import DEFAULT_KEEP
+    from .nightly import (
+        NightlyError,
+        append_line,
+        default_state_dir,
+        run_nightly,
+        write_latest,
+    )
+
+    if not args.instance:
+        print(f"{PROG}: nightly needs at least one --instance", file=sys.stderr)
+        return EXIT_ERROR
+
+    state_dir = Path(args.state_dir) if args.state_dir else default_state_dir()
+
+    def log(message: str) -> None:
+        print(f"{PROG}: {message}", file=sys.stderr)
+
+    try:
+        report = run_nightly(
+            args.instance,
+            args.region,
+            keep=args.keep if args.keep is not None else DEFAULT_KEEP,
+            profile=args.profile,
+            timeout=args.timeout,
+            address=args.address,
+            prefix_len=args.prefix_len,
+            keep_journals=not args.delete_journals,
+            store=state_dir / "addresses.json",
+            log=log,
+        )
+    except NightlyError as exc:
+        print(f"{PROG}: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    latest = write_latest(state_dir / "latest.txt", report)
+    append_line(state_dir / "history.log", report.headline())
+
+    if args.json:
+        print(json.dumps(report.as_dict(), indent=2, ensure_ascii=False))
+    else:
+        print(report.headline())
+        for line in report.detail_lines():
+            print(f"  {line}")
+        print(f"  report: {latest}")
+
+    if report.failures:
+        return EXIT_ERROR
+    return EXIT_CLEAN if report.residual_files == 0 else EXIT_FOUND
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -228,6 +321,8 @@ def main(argv: list[str] | None = None) -> int:
             from .remote import run_remote
 
             return run_remote(args)
+        if args.command == "nightly":
+            return _run_nightly(args)
     except AddressError as exc:
         print(f"{PROG}: {exc}", file=sys.stderr)
         return EXIT_ERROR

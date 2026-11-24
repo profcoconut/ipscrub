@@ -60,19 +60,39 @@ class TestPayload:
 
     def test_starts_by_resetting_the_run_directory(self):
         params = build_payload(PACKAGE_ROOT, [ENCODED], apply=False, prefix_len=None)
-        assert params["commands"][0] == "set -e"
-        assert params["commands"][1] == "rm -rf /tmp/ipscrub-run"
+        reset = params["commands"].index("rm -rf /tmp/ipscrub-run")
+        upload = next(
+            i for i, c in enumerate(params["commands"]) if c.startswith("printf '%s'")
+        )
+        assert reset < upload, "the run directory must be cleared before the upload"
+
+    def test_clears_an_abandoned_run_before_starting(self):
+        """A client timeout leaves the remote process running; two of those
+        make the next pass several times slower."""
+        params = build_payload(PACKAGE_ROOT, [ENCODED], apply=False, prefix_len=None)
+        commands = params["commands"]
+        killer = next(i for i, c in enumerate(commands) if c.startswith("pkill -f"))
+        executed = next(i for i, c in enumerate(commands) if c.startswith("cd /tmp/ipscrub-run"))
+        assert killer < executed
 
     def test_checksum_is_verified_before_running(self):
         params = build_payload(PACKAGE_ROOT, [ENCODED], apply=False, prefix_len=None)
         verified = next(i for i, c in enumerate(params["commands"]) if "sha256sum -c" in c)
-        executed = next(i for i, c in enumerate(params["commands"]) if "-m ipscrub" in c)
+        executed = next(
+            i
+            for i, c in enumerate(params["commands"])
+            if "IPSCRUB_ADDRESS_B64=" in c
+        )
         assert verified < executed
 
     def test_extract_is_verified_before_running(self):
         params = build_payload(PACKAGE_ROOT, [ENCODED], apply=False, prefix_len=None)
         checked = next(i for i, c in enumerate(params["commands"]) if "__main__.py" in c)
-        executed = next(i for i, c in enumerate(params["commands"]) if "-m ipscrub" in c)
+        executed = next(
+            i
+            for i, c in enumerate(params["commands"])
+            if "IPSCRUB_ADDRESS_B64=" in c
+        )
         assert checked < executed
 
     def test_scan_has_no_clean_subcommand(self):

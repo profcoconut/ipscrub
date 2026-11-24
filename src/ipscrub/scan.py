@@ -65,6 +65,22 @@ class Report:
     def failed(self) -> list[Finding]:
         return [f for f in self.applied if f.error]
 
+    @property
+    def removed_files(self) -> int:
+        """Files actually changed, excluding those whose write failed."""
+        return sum(1 for f in self.applied if not f.error)
+
+    @property
+    def removed_occurrences(self) -> int:
+        """Matches actually removed.
+
+        A rule that fires without a readable match (journal deletion) removes a
+        file but contributes no occurrence count, because there was nothing to
+        count.  Reporting a made-up number there would be worse than reporting
+        zero and saying how many files went.
+        """
+        return sum(f.total for f in self.applied if not f.error)
+
 
 def scan_file(path: str, matcher: Matcher, plan: Plan) -> Finding | None:
     """Scan one path. Returns ``None`` when the file is clean or unreadable."""

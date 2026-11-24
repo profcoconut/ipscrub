@@ -6,3 +6,7 @@ dist/
 .pytest_cache/
 .venv/
 venv/
+
+# Runtime state: the rolling address window, the latest report, run logs.
+# These contain real addresses, so they must never be committed.
+state/

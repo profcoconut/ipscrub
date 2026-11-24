@@ -30,6 +30,10 @@ class Action(str, Enum):
 
 
 #: Roots worth walking on a typical Linux host.
+#: Where an address realistically ends up: logs, config, home directories, state.
+#: ``/usr/local`` is deliberately absent.  It is 260 MB of preinstalled tooling
+#: (the bundled AWS CLI alone is most of it), no install tree records a client
+#: address, and sweeping it tripled the runtime of a nightly pass for no finding.
 DEFAULT_ROOTS: tuple[str, ...] = (
     "/var/log",
     "/etc",
@@ -40,7 +44,6 @@ DEFAULT_ROOTS: tuple[str, ...] = (
     "/opt",
     "/srv",
     "/data",
-    "/usr/local",
 )
 
 #: Pseudo filesystems and build junk: never useful, occasionally hostile.

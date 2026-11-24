@@ -76,7 +76,7 @@ Options worth knowing:
 | flag | why |
 | --- | --- |
 | `--prefix-len N` | widen or narrow the network match; `0` or `--no-prefix` for the exact address only |
-| `--root DIR` | repeatable; defaults to a standard Linux set (`/var/log`, `/etc`, `/home`, `/root`, `/var/lib`, `/tmp`, `/opt`, `/srv`, `/data`, `/usr/local`) |
+| `--root DIR` | repeatable; defaults to a standard Linux set (`/var/log`, `/etc`, `/home`, `/root`, `/var/lib`, `/tmp`, `/opt`, `/srv`, `/data`). `/usr/local` is left out on purpose: it is preinstalled tooling, and sweeping it tripled a nightly pass for no finding |
 | `--max-bytes N` | skip and report files above this (default 200 MiB) |
 | `--keep-journals` | delete a journal file only when a plaintext match was found in it |
 | `--no-journald` | do not stop/start journald around journal deletion |
@@ -128,6 +128,40 @@ without touching the defaults.
   address continuously, cleaning is a rearguard action; fix the source.
 - It does not search inside archives, databases, or compressed files other than
   by deleting the ones the plan names.
+
+## Nightly, unattended
+
+```bash
+ipscrub nightly --instance i-0123456789abcdef0 --region ap-northeast-1
+```
+
+One pass for a scheduler: ask the internet for this machine's public address,
+remember it, then clean every address in the rolling window on each named
+instance. It prints how many matches it found and how many it removed:
+
+```
+2026-11-24 17:37 UTC  found 4 in 2 files, removed 4 from 2 files
+```
+
+`--keep N` (default 5) is how many past addresses stay in scope. An address
+leaves the window only when it is evicted, so a carrier reassignment does not
+leave the previous one behind.
+
+Three things that bit me and are now in the code:
+
+- **The system proxy is bypassed when discovering the address.** On a machine
+  running a local proxy client, the proxied answer is the exit node's address,
+  not the address a plain SSH session leaves behind. Cleaning the wrong address
+  looks like success and does nothing.
+- **A client-side timeout does not stop the remote run.** The invocation is
+  abandoned and keeps burning CPU, and two of those make the next night several
+  times slower. Each payload starts by clearing any abandoned run.
+- **A real pass reads about 3.5 GB and took 14m29s on dev-west.** The default
+  `--timeout` is 2700s for that reason.
+
+`scripts/nightly.sh` wraps it for Windows Task Scheduler and pops a desktop
+notification with the headline; `scripts/register-task.sh` registers the 00:00
+daily task. Set `IPSCRUB_NO_POPUP=1` when testing so no window appears.
 
 ## Tests
 
